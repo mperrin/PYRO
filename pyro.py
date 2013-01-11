@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 
 import math
 import os
@@ -7,10 +7,17 @@ import getopt
 import pickle
 import datetime
 
-# Class for comparing tellurics to targets
+import astropy
+from astropy import coordinates as coord
+import astropy.units as u
+
 class tell_comp_vals:
+    """
+    Class for comparing tellurics to targets
+    """
     def __init__(self, index, src, src_time, src_am, tell_time, tell_am, da, dphi):
-        self.index = index # The index of the telluric before sorting
+        self.index = index 
+        self.index.__doc__ = "The index of the telluric before sorting"
         self.src = src # The name of the source that the below comp values correspond to
         self.src_time = src_time # The time at which the airmass of the source was evaluated
         self.src_am = src_am
@@ -24,9 +31,11 @@ class tell_comp_vals:
         print 'index=%d, src=%s, src_time=%2.2f, tell_time=%2.2f, src_am=%2.2f, tell_am=%2.2f, am_diff=%2.2f ang_diff=%2.2fdeg match_rating=%2.2f' % (self.index, self.src, self.src_time, self.tell_time, self.src_am, self.tell_am, self.da, self.dphi, self.rating)
 
 
-# Class which controls the output/print-to-screen levels of the program
 class Output_Level:
-    def __init__(self, loud_Moon, loud_scheduler, loud_priority):
+    """
+    Class which controls the output/print-to-screen levels of the program
+    """
+    def __init__(self, loud_Moon=True, loud_scheduler=True, loud_priority=True):
         self.Moon = loud_Moon # Boolean: print to screen information on the Moon (location, sources proximity to it)
         self.scheduler = loud_scheduler # Boolean: print to screen information on the scheduling
         self.priority = loud_priority # Boolean: print to screen information on priority-targets
@@ -34,7 +43,19 @@ class Output_Level:
 # Class for a telescope/site
 
 class tscope:
-    def __init__( self, name, UToffset, day ):
+    """
+    Telescope and site
+
+    Parameters
+    -----------
+    name : str
+        name of telescope
+    UToffset :
+
+
+
+    """
+    def __init__( self, name='LCO', UToffset=None, day=None ):
         self.name = name
         if( name=='LCO'):
             self.lat = -1.0*(29.0 + 0.0/60.0 + 30.0/3600.0) # in decimal degrees
@@ -54,227 +75,334 @@ class tscope:
     def details(self):
         print '  telescope  details:\n    name = %s\n    lat (decimal degrees) = %f\n    long (decimal hrs) = %f\n    lst + x = current time; x = %f hrs\n' % (self.name, self.lat, self.long, self.lst2curr)
 
+    def __str__(self):
+        return '  telescope  details:\n    name = %s\n    lat (decimal degrees) = %f\n    long (decimal hrs) = %f\n    lst + x = current time; x = %f hrs\n' % (self.name, self.lat, self.long, self.lst2curr)
+
+    def __repr__(self):
+        return ""
+    
+
+
 
 # Class for a target object
 
 class Target:
-	def __init__(self, label, name, z, mag, ra, dec, weight, exp):
-		self.label = label
-		self.name = name
-		self.z = z
-		self.mag = mag
-		self.mag_band = None
-		self.mag2 = -1.0
-		self.mag_band2 = None
-		self.ra = ra
-		self.dec = dec
-		self.sptype = None
-		self.weight = weight
+    """
+    Basic target class
 
-		# Absolute rising and setting properties of the source (not modified for the observation window)
-		self.real_am_rise = -1
-		self.real_am_set = -1
-		self.real_am_used = -1.0
+    Parameters
+    -----------
+    label : string
+        ???
+    name : string
+        The target name
+    z : float
+        Redshift
 
-		self.am_rise = -1
-		self.am_set = -1
-		self.am_vis = 0
-		self.exp = exp # seconds
-		self.start_observation = 0  # Elapsed time (in minutes) when observation starts.  To be filled in by scheduler
-		self.end_observation = 0    # Elapsed time (in minutes) when observation finishes.  To be filled in by scheduler
-		self.night_start = 0 # Local time (hhmm) of the start of the full night's observation run (not just this source)
-		self.night_end = 0 #  Local time (hhmm) of the end of the full night's observation run (not just this source)
-		self.airmass = -1 # Estimated airmass at the central scan time.
+    """
 
-		# Special scheduling properties
-		self.priority = False # Is the object a major priority? (input with -P) 
-		self.exclude = False # Exclude source from schedule (for example, if it's too close to the Moon)
-		self.excl_reason = "N/A" # The reason for excluding this object
+    def __init__(self, label, name, z, mag, ra, dec, weight, exp):
 
-		# Telluric properties
-		self.num_tells = 0 # Number of tellurics found for this source
-		self.tell_slots = 0 # Number of time slots to devote to tellurics
-		self.tellurics = list()     # List of nearby telluric stars.  Don't fill this in until object is scheduled (time matters)
-		self.tell_comp_vals = 0 # If this object is a target (ie, not a telluric), these describe how well its tellurics match it
+        self.label = label
+        self.name = name
+        self.z = z
+        self.mag = mag
+        self.mag_band = None
+        self.mag2 = -1.0
+        self.mag_band2 = None
+        #self.ra = ra
+        #self.dec = dec
+        self.sptype = None
+        self.weight = weight
 
-		# Other
-		self.moon_angle = -1.0 # Angle between this target and the Moon
+        print "ra, dec = ", ra, dec
 
-		self.scheduled_id = "-1"      # ID in the telescope operator's catalogue.  Not filled in until object is scheduled
+        self.coords = coord.ICRSCoordinates(ra=ra, dec=dec, unit=(u.hour, u.degree)) 
+
+
+        # Absolute rising and setting properties of the source (not modified for the observation window)
+        self.real_am_rise = -1
+        self.real_am_set = -1
+        self.real_am_used = -1.0
+
+        self.am_rise = -1
+        self.am_set = -1
+        self.am_vis = 0
+        self.exp = exp # seconds
+        self.start_observation = 0  # Elapsed time (in minutes) when observation starts.  To be filled in by scheduler
+        self.end_observation = 0    # Elapsed time (in minutes) when observation finishes.  To be filled in by scheduler
+        self.night_start = 0 # Local time (hhmm) of the start of the full night's observation run (not just this source)
+        self.night_end = 0 #  Local time (hhmm) of the end of the full night's observation run (not just this source)
+        self.airmass = -1 # Estimated airmass at the central scan time.
+
+        # Special scheduling properties
+        self.priority = False # Is the object a major priority? (input with -P) 
+        self.exclude = False # Exclude source from schedule (for example, if it's too close to the Moon)
+        self.excl_reason = "N/A" # The reason for excluding this object
+
+        # Telluric properties
+        self.num_tells = 0 # Number of tellurics found for this source
+        self.tell_slots = 0 # Number of time slots to devote to tellurics
+        self.tellurics = list()     # List of nearby telluric stars.  Don't fill this in until object is scheduled (time matters)
+        self.tell_comp_vals = 0 # If this object is a target (ie, not a telluric), these describe how well its tellurics match it
+
+        # Other
+        self.moon_angle = -1.0 # Angle between this target and the Moon
+
+        self.scheduled_id = "-1"      # ID in the telescope operator's catalogue.  Not filled in until object is scheduled
 
     # Prints out the details of all the information stored in the target structure
-	def details(self):
+    def details(self):
 
-		output = "\n  Details for source %s (object type = %s)\n" % ( self.name, self.label )
-		output += "  ****************************************************\n"
+        output = "\n  Details for source %s (object type = %s)\n" % ( self.name, self.label )
+        output += "  ****************************************************\n"
 
-		output += "  General Properties:"
-		output += "    Right Ascension = %f hrs\n" % ( self.ra )
-		output += "    Declination = %f degrees\n" % ( self.dec )
-		output += "    Angular distance from Moon (in degrees) = "
-		if self.moon_angle < 0.0:
-		    output += " unknown (use -M or --Moon to turn on Moon option)\n"
-		else:
-		    output += "%2.2f degrees\n" % (self.moon_angle)
-		output += "    Redshift = "
-		if self.z < 0.0:
-		    output += "unknown\n"
-		else:
-		    output += "%2.2f\n" % ( self.z )
-		output += "    Magnitude = "
-		if self.mag <= 0.0:
-		    output += "unknown\n"
-		else:
-		    output += "%2.2f (band = " % ( self.mag )
-		    if self.mag_band is None:
-		        output += "unknown)\n"
-		    else:
-		        output += "%s)\n" % ( self.mag_band )
-		output += "    Magnitude (2nd band) = "
-		if self.mag2 <= 0.0:
-		    output += "unknown\n"
-		else:
-		    output += "%2.2f (band = " % ( self.mag2 )
-		    if self.mag_band2 is None:
-		        output += "unknown)\n"
-		    else:
-		        output += "%s)\n" % ( self.mag_band2 )
-		output += "    Required exposure time = %3.2f secs\n" % ( self.exp )
+        output += "  General Properties:"
+        output += "    Right Ascension = %f hrs\n" % ( self.ra )
+        output += "    Declination = %f degrees\n" % ( self.dec )
+        output += "    Angular distance from Moon (in degrees) = "
+        if self.moon_angle < 0.0:
+            output += " unknown (use -M or --Moon to turn on Moon option)\n"
+        else:
+            output += "%2.2f degrees\n" % (self.moon_angle)
+        output += "    Redshift = "
+        if self.z < 0.0:
+            output += "unknown\n"
+        else:
+            output += "%2.2f\n" % ( self.z )
+        output += "    Magnitude = "
+        if self.mag <= 0.0:
+            output += "unknown\n"
+        else:
+            output += "%2.2f (band = " % ( self.mag )
+            if self.mag_band is None:
+                output += "unknown)\n"
+            else:
+                output += "%s)\n" % ( self.mag_band )
+        output += "    Magnitude (2nd band) = "
+        if self.mag2 <= 0.0:
+            output += "unknown\n"
+        else:
+            output += "%2.2f (band = " % ( self.mag2 )
+            if self.mag_band2 is None:
+                output += "unknown)\n"
+            else:
+                output += "%s)\n" % ( self.mag_band2 )
+        output += "    Required exposure time = %3.2f secs\n" % ( self.exp )
 
-		output += "  Airmass properties:\n"
-		output += "    Airmass used for rising/setting times = "
-		if self.real_am_used < 0.0:
-		    output += "unknown\n"
-		else:
-		    output += "%2.2f\n" % ( self.real_am_used )
-		output += "    Rising time = "
-		if self.real_am_rise < 0:
-		    output += "unknown\n"
-		else:
-		    output += "%d (hhmm)\n" % ( self.real_am_rise )
-		output += "    Setting time = "
-		if self.real_am_set < 0:
-		    output += "unknown\n"
-		else:
-		    output += "%d (hhmm)\n" % ( self.real_am_set )
+        output += "  Airmass properties:\n"
+        output += "    Airmass used for rising/setting times = "
+        if self.real_am_used < 0.0:
+            output += "unknown\n"
+        else:
+            output += "%2.2f\n" % ( self.real_am_used )
+        output += "    Rising time = "
+        if self.real_am_rise < 0:
+            output += "unknown\n"
+        else:
+            output += "%d (hhmm)\n" % ( self.real_am_rise )
+        output += "    Setting time = "
+        if self.real_am_set < 0:
+            output += "unknown\n"
+        else:
+            output += "%d (hhmm)\n" % ( self.real_am_set )
 
-		output += "  Observation details (general):\n"
-		output += "    Start of night's observation = %d (hhmm)\n" % ( self.night_start )
-		output += "    End of night's observation = %d (hhmm)\n" % ( self.night_end )
+        output += "  Observation details (general):\n"
+        output += "    Start of night's observation = %d (hhmm)\n" % ( self.night_start )
+        output += "    End of night's observation = %d (hhmm)\n" % ( self.night_end )
 
-		output += "  Observation details (specific to target):\n"
-		output += "    Target's scheduling weight: %4.3f\n" % ( self.weight )
-		output += "    Is this target a priority (ie, input with -P or --Priority flag)? %s\n" % ( boolean2yesno( self.priority ) )
-		output += "    Is this target automatically excluded? %s (Reason: %s)\n" % ( boolean2yesno( self.exclude ), self.excl_reason )
-		output += "    Airmass rise time (modified by observation window) = %d (hhmm)\n" % ( self.am_rise )
-		output += "    Airmass set time (modified by observation window) = %d (hhmm)\n" % ( self.am_set )
-		output += "    Total time up within observation window = "
-		if self.am_vis==-1:
-		    output += "never up\n"
-		else:
-		    output += "%d\n" % ( self.am_vis )
-		output += "    Number of time slots set aside for telluric observation = %d\n" % ( self.tell_slots )
-		output += "    Scheduled observation start time = %d (hhmm after observation start)\n" % ( self.start_observation )
-		output += "    Scheduled observation end time = %d (hhmm after observation start)\n" % ( self.end_observation )
+        output += "  Observation details (specific to target):\n"
+        output += "    Target's scheduling weight: %4.3f\n" % ( self.weight )
+        output += "    Is this target a priority (ie, input with -P or --Priority flag)? %s\n" % ( boolean2yesno( self.priority ) )
+        output += "    Is this target automatically excluded? %s (Reason: %s)\n" % ( boolean2yesno( self.exclude ), self.excl_reason )
+        output += "    Airmass rise time (modified by observation window) = %d (hhmm)\n" % ( self.am_rise )
+        output += "    Airmass set time (modified by observation window) = %d (hhmm)\n" % ( self.am_set )
+        output += "    Total time up within observation window = "
+        if self.am_vis==-1:
+            output += "never up\n"
+        else:
+            output += "%d\n" % ( self.am_vis )
+        output += "    Number of time slots set aside for telluric observation = %d\n" % ( self.tell_slots )
+        output += "    Scheduled observation start time = %d (hhmm after observation start)\n" % ( self.start_observation )
+        output += "    Scheduled observation end time = %d (hhmm after observation start)\n" % ( self.end_observation )
 
-		output += "  Properties of matched tellurics:\n"
-		output += "    Number of tellurics found for this source = %d\n" % ( self.num_tells )
-		if self.num_tells > 0:
-		    output += "    Information on best  matched tellurics (and comparison values):\n"
-		    #for tell_num in range(0,self.num_tells):
-		    #    output += self.telluric_catalog_entry(tell_num)
-		output += "    ****************************************************"
-		output += self.tell_details()
-		output += "    ****************************************************\n"
+        output += "  Properties of matched tellurics:\n"
+        output += "    Number of tellurics found for this source = %d\n" % ( self.num_tells )
+        if self.num_tells > 0:
+            output += "    Information on best  matched tellurics (and comparison values):\n"
+            #for tell_num in range(0,self.num_tells):
+            #    output += self.telluric_catalog_entry(tell_num)
+        output += "    ****************************************************"
+        output += self.tell_details()
+        output += "    ****************************************************\n"
 
-		return output
+        return output
 
-	def tell_details(self):
+    def tell_details(self):
+        """ Describe details of tellurics"""
 
-		if self.num_tells==0:
-			output = "\n %s: Didn't try to find tellurics for this object.\n" % (self.name)
- 		else:
-			tcv = self.tell_comp_vals[0]
-			output = "\n  %s:  RA= %s, Dec= %s  airmass= %4.3f at lst %s\n" % (self.name, dechrs2hhmmss(self.ra,True), deg2degmmss(self.dec,True), tcv.src_am, dechrs2hhmmss(tcv.src_time, True))
-			output += "    Best telluric matches:\n"
-			for tell_num in range(0, len(self.tellurics)):
-				output += self.tell_details1(tell_num)
+        if self.num_tells==0:
+            output = "\n %s: Didn't try to find tellurics for this object.\n" % (self.name)
+        else:
+            tcv = self.tell_comp_vals[0]
+            output = "\n  %s:  RA= %s, Dec= %s  airmass= %4.3f at lst %s\n" % (self.name, dechrs2hhmmss(self.ra,True), deg2degmmss(self.dec,True), tcv.src_am, dechrs2hhmmss(tcv.src_time, True))
+            output += "    Best telluric matches:\n"
+            for tell_num in range(0, len(self.tellurics)):
+                output += self.tell_details1(tell_num)
 
-		return output
+        return output
 
-	def tell_details1(self, tell_num):
-		tell = self.tellurics[tell_num]
-		tcv = self.tell_comp_vals[tell_num]
-		output  = "      (%d): %s\n" % ( tell_num+1, tell.name )
-		ra = dechrs2hhmmss(tell.ra, True)
-		dec = deg2degmmss(tell.dec, True)
-		output += "          Mag= %3.2f " % ( tell.mag )
-		if tell.mag_band is not None:
-		    output += "(Band= %s)" % ( tell.mag_band )
-		else:
-		    output += "(Band = Unknown)"
-		output += "  RA= %s  Dec= %s  Anguler Offset= %2.2f deg\n" % (ra, dec, tcv.dphi)
-		output += "          This telluric: airmass = %4.3f at lst %s    airmass diff from source = %4.3f.  Match rating = %4.2f\n" % (tcv.tell_am, dechrs2hhmmss(tcv.tell_time, True), tcv.da, tcv.rating)
+    def tell_details1(self, tell_num):
+        tell = self.tellurics[tell_num]
+        tcv = self.tell_comp_vals[tell_num]
+        output  = "      (%d): %s\n" % ( tell_num+1, tell.name )
+        ra = dechrs2hhmmss(tell.ra, True)
+        dec = deg2degmmss(tell.dec, True)
+        output += "          Mag= %3.2f " % ( tell.mag )
+        if tell.mag_band is not None:
+            output += "(Band= %s)" % ( tell.mag_band )
+        else:
+            output += "(Band = Unknown)"
+        output += "  RA= %s  Dec= %s  Anguler Offset= %2.2f deg\n" % (ra, dec, tcv.dphi)
+        output += "          This telluric: airmass = %4.3f at lst %s    airmass diff from source = %4.3f.  Match rating = %4.2f\n" % (tcv.tell_am, dechrs2hhmmss(tcv.tell_time, True), tcv.da, tcv.rating)
 
-		return output
+        return output
 
-    # Return a string containing a line formatted for a Magellan telescope operator's catalog.  comment=Boolean: write a comment column?
-	def catalog_entry(self, comment):
-	    seconds = (self.ra % 1) * 3600.0
-	    ra = "%02d:%02d:%04.1f" % (int(math.floor(self.ra)), int(math.floor(seconds/60)), seconds % 60)
+    def catalog_entry(self, comment=False):
+        """
+        Return a string containing a line formatted for a Magellan telescope operator's catalog. 
 
-	    if str(self.dec)[0] == "-":
-	        sign = "-"
-	    else:
-	        sign = "+"
-	    seconds = (abs(self.dec) % 1) * 3600.0
-	    dec = sign + "%02d:%02d:%04.1f" % (int(math.floor(abs(self.dec))), int(math.floor(seconds/60)), seconds % 60)
+        Parameters
+        -------------
+        comment: Boolean
+            write a comment column?
+        """
+        #seconds = (self.ra % 1) * 3600.0
+        #ra = "%02d:%02d:%04.1f" % (int(math.floor(self.ra)), int(math.floor(seconds/60)), seconds % 60)
 
-	    entry = self.scheduled_id + "    "
-	    entry += str(self.name).ljust(25, " ")
-	    entry += ra + "    "
-	    entry += dec + "    "
-	    entry += "2000.0 0.0 0.0 -0.2 HRZ 00:00:00 00:00:00 2000.0 00:00:00 00:00:00 2000.0	"
-	    if comment == True:
-	        if self.z is None:
-	            z_str = "N/A"
-	        else:
-	            z_str = "%4.2f" % self.z
-	        comment = "%s;z=%s;weight=%5.3f;exp=%5.1f\n" % (self.label,z_str,self.weight,self.exp)
-	        entry += comment
-	    return entry
+        ra = self.coords.ra.format(sep=':')
 
-	def telluric_catalog_entry(self, tell_num):
+        #if str(self.dec)[0] == "-":
+            #sign = "-"
+        #else:
+            #sign = "+"
+        #seconds = (abs(self.dec) % 1) * 3600.0
+        #dec = sign + "%02d:%02d:%04.1f" % (int(math.floor(abs(self.dec))), int(math.floor(seconds/60)), seconds % 60)
 
-		tcv = self.tell_comp_vals[tell_num]
-		entry = self.tellurics[tell_num].catalog_entry(False)
-		if self.tellurics[tell_num].mag_band2 is not None:
-			if self.tellurics[tell_num].mag2 is not None:
-				comment = "Tell;da=%4.2f;dphi=%4.2f;%s=%3.2f;%s=%3.2f;score=%4.2f\n" % (tcv.da, tcv.dphi, self.tellurics[tell_num].mag_band, self.tellurics[tell_num].mag, self.tellurics[tell_num].mag_band2, self.tellurics[tell_num].mag2, tcv.rating)
-			else:
-				comment = "Tell;da=%4.2f;dphi=%4.2f;%s=%3.2f;%s=?;score=%4.2f\n" % (tcv.da, tcv.dphi, self.tellurics[tell_num].mag_band, self.tellurics[tell_num].mag, self.tellurics[tell_num].mag_band2, tcv.rating)
-		else:
-			comment = "Tell;da=%4.2f;dphi=%4.2f;%s=%3.2f;score=%4.2f\n" % (tcv.da, tcv.dphi, self.tellurics[tell_num].mag_band, self.tellurics[tell_num].mag, tcv.rating)
-		entry += comment
+        dec = self.coords.dec.format(sep=':', alwayssign=True)
 
-		return entry
+        entry = self.scheduled_id + "    "
+        entry += str(self.name).ljust(25, " ")
+        entry += ra + "    "
+        entry += dec + "    "
+        entry += "2000.0 0.0 0.0 -0.2 HRZ 00:00:00 00:00:00 2000.0 00:00:00 00:00:00 2000.0    "
+        if comment == True:
+            if self.z is None:
+                z_str = "N/A"
+            else:
+                z_str = "%4.2f" % self.z
+            comment = "%s;z=%s;weight=%5.3f;exp=%5.1f\n" % (self.label,z_str,self.weight,self.exp)
+            entry += comment
+        return entry
 
+    def telluric_catalog_entry(self, tell_num):
+
+        tcv = self.tell_comp_vals[tell_num]
+        entry = self.tellurics[tell_num].catalog_entry(False)
+        if self.tellurics[tell_num].mag_band2 is not None:
+            if self.tellurics[tell_num].mag2 is not None:
+                comment = "Tell;da=%4.2f;dphi=%4.2f;%s=%3.2f;%s=%3.2f;score=%4.2f\n" % (tcv.da, tcv.dphi, self.tellurics[tell_num].mag_band, self.tellurics[tell_num].mag, self.tellurics[tell_num].mag_band2, self.tellurics[tell_num].mag2, tcv.rating)
+            else:
+                comment = "Tell;da=%4.2f;dphi=%4.2f;%s=%3.2f;%s=?;score=%4.2f\n" % (tcv.da, tcv.dphi, self.tellurics[tell_num].mag_band, self.tellurics[tell_num].mag, self.tellurics[tell_num].mag_band2, tcv.rating)
+        else:
+            comment = "Tell;da=%4.2f;dphi=%4.2f;%s=%3.2f;score=%4.2f\n" % (tcv.da, tcv.dphi, self.tellurics[tell_num].mag_band, self.tellurics[tell_num].mag, tcv.rating)
+        entry += comment
+
+        return entry
+
+    # Convert H:M:S/D:M:S to decimal hours/degrees
+    def _ra_dec_from_strings(self):
+        """ Determind RA/Dec from strings
+        """
+
+
+
+        # Does the input value have seconds attached?
+        
+        #print src.ra
+        #print len(src.ra)
+        #print len((src.ra.split("."))[0])
+
+        #print "src.ra = ", src.ra
+
+        # Calculate the decimal RA
+        ra = float(src.ra.replace(':',''))
+
+        # Determine if seconds are included
+        if len((src.ra.split("."))[0])==4:  # secs aren't included...
+            h = float(int(ra)/100)
+            m = ra - h*100.0
+            s = 0.0
+            #print h, m
+        else:
+            h = float(int(ra)/10000)
+            m = float((int(ra) % 10000)/100)
+            s = ra - h*10000.0 - m*100.0
+            #print h, m, s
+
+        src.ra = h + m/60.0 + s/3600.0
+
+        # print "orig dec =", src.dec
+
+        # Calculate the decimal Dec
+        dec = src.dec.replace(':','')
+
+        # Determine if arc seconds are included
+        num_digs = len((src.dec.split("."))[0])
+        sign_incl = ( dec[0]=='-' or dec[0]=='+' )
+
+        # Remove the initial sign
+        if(dec[0] == "-"):
+            neg = -1.0
+            dec = -1.0*float(dec)
+        else:
+            neg = 1.0
+            dec = float(dec)
+
+        if (num_digs==5 and sign_incl==True) or (num_digs==4 and sign_incl==False): # no arcsecs included
+            deg = float(int(dec)/100)
+            m = dec - deg*100.0
+            s = 0.0
+            #print deg, m
+        else:
+            deg = float(int(dec)/10000)
+            m = float((int(dec) % 10000)/100)
+            s = dec - deg*10000.0 - m*100.0
+            #print deg, m, s
+            
+        src.dec = neg * (deg + m/60.0 + s/3600.0)
+        
+        return src
 
 # Inputs True or False, and outputs 'yes' or 'no', respectively
 def boolean2yesno( input ):
-    if input== True:
-        out = "yes"
-    else:
-        out = "no"
-    return out
+    return "yes" if input else 'no'
+    #if input== True:
+        #out = "yes"
+    #else:
+        #out = "no"
+    #return out
 
 # Utils for airmass calcs
 
 def lst2curr( lst, tscope ):
     return make0to24(lst + tscope.lst2curr)
 
-# Inputs a target structure with an SDSS name and determines the ra and dec from the name
 def get_ra_dec_from_SDSS_name( src ):
+    """
+    Takes a target object with an SDSS name and 
+    determines its coordinates from the name
+    """
 
     name = src.name
     name = name.replace('SDSSJ','')
@@ -282,7 +410,7 @@ def get_ra_dec_from_SDSS_name( src ):
     h = float(name[0:2])
     m = float(name[2:4])
     s = float(name[4:9])
-    src.ra = h + m/60.0 + s/3600.0
+    ra_hr = h + m/60.0 + s/3600.0
     d = float(name[9:12])
     if(name[9] == "-"):
         neg = -1.0
@@ -291,68 +419,12 @@ def get_ra_dec_from_SDSS_name( src ):
         neg = 1.0
     m = float(name[12:14])
     s = float(name[14:16])
-    src.dec = neg*(d + m/60.0 + s/3600.0)
+    dec_deg = neg*(d + m/60.0 + s/3600.0)
+
+    src.coords = coord.ICRSCoordinates( ra = ra_hr, dec=dec_deg, unit=(u.hour, u.degree))
 
     return src
 
-# Convert H:M:S/D:M:S to decimal hours/degrees
-def convert_ra_dec(src):
-    # Does the input value have seconds attached?
-    
-    #print src.ra
-    #print len(src.ra)
-    #print len((src.ra.split("."))[0])
-
-    #print "src.ra = ", src.ra
-
-    # Calculate the decimal RA
-    ra = float(src.ra.replace(':',''))
-
-    # Determine if seconds are included
-    if len((src.ra.split("."))[0])==4:  # secs aren't included...
-        h = float(int(ra)/100)
-        m = ra - h*100.0
-        s = 0.0
-        #print h, m
-    else:
-        h = float(int(ra)/10000)
-        m = float((int(ra) % 10000)/100)
-        s = ra - h*10000.0 - m*100.0
-        #print h, m, s
-
-    src.ra = h + m/60.0 + s/3600.0
-
-    # print "orig dec =", src.dec
-
-    # Calculate the decimal Dec
-    dec = src.dec.replace(':','')
-
-    # Determine if arc seconds are included
-    num_digs = len((src.dec.split("."))[0])
-    sign_incl = ( dec[0]=='-' or dec[0]=='+' )
-
-    # Remove the initial sign
-    if(dec[0] == "-"):
-        neg = -1.0
-        dec = -1.0*float(dec)
-    else:
-        neg = 1.0
-        dec = float(dec)
-
-    if (num_digs==5 and sign_incl==True) or (num_digs==4 and sign_incl==False): # no arcsecs included
-        deg = float(int(dec)/100)
-        m = dec - deg*100.0
-        s = 0.0
-        #print deg, m
-    else:
-        deg = float(int(dec)/10000)
-        m = float((int(dec) % 10000)/100)
-        s = dec - deg*10000.0 - m*100.0
-        #print deg, m, s
-        
-    src.dec = neg * (deg + m/60.0 + s/3600.0)
-    
-    return src
 
 # Function converts read-in ra and dec strings to floats
 def radec_str2float( src ):
@@ -407,9 +479,9 @@ def invert_airmass( airmass, tscope, src ):
 
     deg2rad = math.pi/180.0
     one_over_a = 1.0/airmass
-    dec = src.dec # src dec in decimal degrees
-    sin_dec = math.sin(dec*deg2rad)
-    cos_dec = math.cos(dec*deg2rad)
+    #dec = src.dec # src dec in decimal degrees
+    sin_dec = math.sin(src.coords.dec.radians)
+    cos_dec = math.cos(src.coords.dec.radians)
     lat = tscope.lat # tscope latitude in decimal degrees
     sin_lat = math.sin(lat*deg2rad)
     cos_lat = math.cos(lat*deg2rad)
@@ -423,7 +495,7 @@ def invert_airmass( airmass, tscope, src ):
     ha2 = -1.0*ha1
 
     # Determine the src lst in decimal hours
-    ra = src.ra # src ra in decimal degrees
+    ra = src.coords.ra.degrees # src ra in decimal degrees
     lst_min = get_lst(ra,ha2)
     lst_max = get_lst(ra,ha1)
 
@@ -442,7 +514,7 @@ def invert_airmass( airmass, tscope, src ):
 
 # Calculates the position of a source on the celestial sphere at local sidereal time lst
 def get_spherical_vec( src, lst ):
-    return [ math.cos(h2r(get_ha(lst,src.ra)))*math.cos(d2r(src.dec)), math.sin(h2r(get_ha(lst,src.ra)))*math.cos(d2r(src.dec)), math.sin(d2r(src.dec))]
+    return [ math.cos(h2r(get_ha(lst,src.coords.ra.)))*math.cos(d2r(src.dec)), math.sin(h2r(get_ha(lst,src.ra)))*math.cos(d2r(src.dec)), math.sin(d2r(src.dec))]
 
 # The quality of match rating for a telluric with airmass difference da and angular difference dphi
 def rate_tell(da,dphi):
@@ -480,6 +552,7 @@ def get_ha( lst, ra ):
     return ( lst-ra )
 
 # Converts the input degrees to radians
+### FIXME this is redundant with numpy.deg2rad
 def d2r( deg ):
     return deg*math.pi/180.0
 
@@ -489,8 +562,8 @@ def h2r( hour ):
 
 # Inputs telescope location, a target (equipped with its position on the sky) and a local sidereal time, and outputs the airmass
 def get_airmass( src, site, lst ):
-    ha = get_ha( lst, src.ra )
-    cos_phi = math.cos(h2r(ha))*math.cos(d2r(src.dec))*math.cos(d2r(site.lat)) + math.sin(d2r(src.dec))*math.sin(d2r(site.lat))
+    ha = get_ha( lst, src.coords.ra.hours )
+    cos_phi = math.cos(h2r(ha))*math.cos(src.coords.dec.radians)*math.cos(d2r(site.lat)) + math.sin(src.coords.dec.radians)*math.sin(d2r(site.lat))
     return 1.0/cos_phi
 
 # Inputs an hour angle and two quantities "quant1" and "quant2", and outputs an airmass
@@ -507,7 +580,7 @@ def find_tellurics_1src( src, central_lst, airmass, all_tellurics, quant1_tells,
 
     # Calculate the airmasses and angular difference of all tellurics
     for index, tell in enumerate(all_tellurics):
-        airmass_tell =  get_airmass_from_quants( get_ha(lst,tell.ra), quant1_tells[index], quant2_tells[index] )
+        airmass_tell =  get_airmass_from_quants( get_ha(lst,tell.coords.ra.hours), quant1_tells[index], quant2_tells[index] )
         da = (airmass - airmass_tell)
         dphi = angle_between( tell, src )
         temp_comp = tell_comp_vals( index, src.name, central_lst, airmass, lst, airmass_tell, da, dphi )
@@ -566,8 +639,8 @@ def find_closest_tellurics( all_sources, telluric_filenames, site, pure_A0V_only
     quant1_tells = list()
     quant2_tells = list()
     for tell in all_tellurics:
-        quant1_tells.append( math.cos(d2r(tell.dec))*math.cos(d2r(site.lat)) )
-        quant2_tells.append( math.sin(d2r(tell.dec))*math.sin(d2r(site.lat)) )
+        quant1_tells.append( math.cos(tell.coords.dec.radians)*math.cos(d2r(site.lat)) )
+        quant2_tells.append( math.sin(tell.coords.dec.radians)*math.sin(d2r(site.lat)) )
 
     output_tells = list()
     output_comps = list()
@@ -658,10 +731,18 @@ def in_range( val, val_min, val_max ):
 def pure_enough( type, pure_A0V_only ):
     return( type=='A0V' or pure_A0V_only==0 )
 
-# Inputs a source ('src') and the Moon ('Moon'), calculates the angular difference between them, and determines whether its less (return 'True') or greater (return 'False') then the input angle 'min_moon_angle' (in degrees).  'loud_Moon' determines if information is printed to screen.
 def too_close_to_Moon( src, Moon, min_moon_angle, loud_Moon ):
+    """
+     Inputs a source ('src') and the Moon ('Moon'), calculates the angular
+     difference between them, and determines whether its less (return 'True') or
+     greater (return 'False') then the input angle 'min_moon_angle' (in degrees).
+     'loud_Moon' determines if information is printed to screen.
+
+    """
+
     if Moon is not None:
-        moon_ang = angle_between(src, Moon) 
+        moon_ang = src.coords.separation(Moon.coords).degrees
+        #moon_ang = angle_between(src, Moon) 
         bad_moon = ( min_moon_angle > moon_ang )
         if bad_moon == True:
             if loud_Moon==True:
@@ -678,85 +759,87 @@ def too_close_to_Moon( src, Moon, min_moon_angle, loud_Moon ):
         return False
 
 def usage():
-	print "\nWelcome to PYRO's help message To avoid this message, you must:"
-	print "  (1): not include the -h flag when running PYRO"
-	print "  (2): run PYRO without any incorrect arguments"
-	print ""
-	print "PYRO is an acronym that stands for 'Planning Your Required Observations'.  It is a multi-purpose tool.  Some of its most useful/important tasks are:"
-	print "(1) Converting custom target lists of objects to Magellan catalog format"
-	print "(2) Collecting and displaying information on requested objects"
-	print "(3) Matching targets to tellurics (although one should consider using find_telluric.py instead)"
-	print "(4) Scheduling prioritized observations (needs work)"
-	print ""
-	print "Command line arguments:"
-	print "--------------------------------------------------------------"
-	print "\nOptional argumets (and defaults)"
-	print " -b, --start: Starting time of run (2400h format)"
-	print " -e, --end: Ending time of run (2400h format)"
-	print " -d, --day: First day (local calendar day) of schedule.  Default: today, as determined by python's datetime.date.today() function.  (YYYY-MM-DD format)"
-	print " -U, --UToff: Number of hours added to UT to get current local time.  Default compensates for Daylight Savings Time (should be accurate from April 4, 2010 until 2020, unless Chile changes its policy), and is printed to screen if used."
-	print " -t, --targetlist: File containing target information.  Can input more than one target list; separate by \";\" (ex, --target \"list1.cat;list2.cat\").  (Default is \"z4.cat;z6.cat\").  To learn the proper formatting of the target list files, run pyro.py with the -f flag."
-	print " -g, --granularity: Granularity of schedule (default is 5 minutes)"
-	print " -a, --airmass: Worst airmass at which to allow observing of a target (default is 1.5)"
-	print " -c, --catalog: Write out a catalog for the telescope operator to Mon_DD_YYYY.txt (formatted for LCO/Magellan; 'Mon' is three-letter abbreviation for the month, and 'DD' and 'YYYY' are the day and year, respectively.) (default is off)"
-	print " -s, --seeing: Current seeing (affects calculated exposure times) (default is 0.6)"
-	print " -n, --nights: Number of nights to schedule (unscheduled targets in one night will be carried over to the next) (default is 1)"
-	print " -P, --Priority: Name(s) of absolute highest priority object(s).  (If necessary, bends airmass cutoffs.)  Can input more than one directly to the commandline; separate by \";\" (ex, --priority \"obj1;obj2\").  Alternatively, in the argument of these flags ends in \'.txt\', a text file of the same name is used to determine priority sources.  (Run pyro.py with te -f flag to learn the proper file formatting).  Does not work with --eaf or --majordome.  Might not schedule all priority sources if two highest priority objects peak at the same time."
-	print " -v, --verbose: Name(s) of objects for which to print to screen all gathered information on.  Can input more than one; separate by \";\" (ex, --verbose \"obj1;obj2\")."
-	print " -M, --Moon: Boolean.  If set, then don't consider sources close to the Moon.  Default: True (use Moon).  Compare with: --NoMoon"
-	print " --NoMoon: Boolean.  If set, then do not eliminate sources based upon their proximity to the Moon.  Default: False (use Moon).  Compare with: -M, --Moon." 
-	print " --tellurics: Specify a catalog of telluric standard stars (default is Hipparcus_Astars.txt).  To the learn the proper formatting of this input file, run pyro.py with the -f flag."
-	print " --tmin: minimum magnitude allowed when matching tellurics.  The band is that specified by MAG_BAND in the tellurics file (run pyro.py with the -f flag to learn more about file formats.  Default = 8.0 (band is assumed V)."
-	print " --tmax: maximum magnitude allowed when matching tellurics.  The band is that specified by MAG_BAND in the tellurics file (run pyro.py with the -f flag to learn more about file formats.  Default = 11.0 (band is assumed V)."
-	print " --pureA0V: ==0 if variants of A0V stars (exampe, A0V+) are acceptable for tellurics, ==1 if only pure A0V stars are allowed.  Default = 1."
+    print """
+    Welcome to PYRO's help message To avoid this message, you must:
+      (1): not include the -h flag when running PYRO
+      (2): run PYRO without any incorrect arguments
+    
+    PYRO is an acronym that stands for 'Planning Your Required Observations'.  It is a multi-purpose tool.  Some of its most useful/important tasks are:
+    (1) Converting custom target lists of objects to Magellan catalog format
+    (2) Collecting and displaying information on requested objects
+    (3) Matching targets to tellurics (although one should consider using find_telluric.py instead)
+    (4) Scheduling prioritized observations (needs work)
+    
+    Command line arguments:
+    --------------------------------------------------------------
+    Optional arguments (and defaults)
+     -b, --start: Starting time of run (2400h format)
+     -e, --end: Ending time of run (2400h format)
+     -d, --day: First day (local calendar day) of schedule.  Default: today, as determined by python's datetime.date.today() function.  (YYYY-MM-DD format)
+     -U, --UToff: Number of hours added to UT to get current local time.  Default compensates for Daylight Savings Time (should be accurate from April 4, 2010 until 2020, unless Chile changes its policy), and is printed to screen if used.
+     -t, --targetlist: File containing target information.  Can input more than one target list; separate by \";\" (ex, --target \"list1.cat;list2.cat\").  (Default is \"z4.cat;z6.cat\").  To learn the proper formatting of the target list files, run pyro.py with the -f flag.
+     -g, --granularity: Granularity of schedule (default is 5 minutes)
+     -a, --airmass: Worst airmass at which to allow observing of a target (default is 1.5)
+     -c, --catalog: Write out a catalog for the telescope operator to Mon_DD_YYYY.txt (formatted for LCO/Magellan; 'Mon' is three-letter abbreviation for the month, and 'DD' and 'YYYY' are the day and year, respectively.) (default is off)
+     -s, --seeing: Current seeing (affects calculated exposure times) (default is 0.6)
+     -n, --nights: Number of nights to schedule (unscheduled targets in one night will be carried over to the next) (default is 1)
+     -P, --Priority: Name(s) of absolute highest priority object(s).  (If necessary, bends airmass cutoffs.)  Can input more than one directly to the commandline; separate by \";\" (ex, --priority \"obj1;obj2\").  Alternatively, in the argument of these flags ends in \'.txt\', a text file of the same name is used to determine priority sources.  (Run pyro.py with te -f flag to learn the proper file formatting).  Does not work with --eaf or --majordome.  Might not schedule all priority sources if two highest priority objects peak at the same time.
+     -v, --verbose: Name(s) of objects for which to print to screen all gathered information on.  Can input more than one; separate by \";\" (ex, --verbose \"obj1;obj2\").
+     -M, --Moon: Boolean.  If set, then don't consider sources close to the Moon.  Default: True (use Moon).  Compare with: --NoMoon
+     --NoMoon: Boolean.  If set, then do not eliminate sources based upon their proximity to the Moon.  Default: False (use Moon).  Compare with: -M, --Moon. 
+     --tellurics: Specify a catalog of telluric standard stars (default is Hipparcus_Astars.txt).  To the learn the proper formatting of this input file, run pyro.py with the -f flag.
+     --tmin: minimum magnitude allowed when matching tellurics.  The band is that specified by MAG_BAND in the tellurics file (run pyro.py with the -f flag to learn more about file formats.  Default = 8.0 (band is assumed V).
+     --tmax: maximum magnitude allowed when matching tellurics.  The band is that specified by MAG_BAND in the tellurics file (run pyro.py with the -f flag to learn more about file formats.  Default = 11.0 (band is assumed V).
+     --pureA0V: ==0 if variants of A0V stars (exampe, A0V+) are acceptable for tellurics, ==1 if only pure A0V stars are allowed.  Default = 1.
 
-	print " --eaf: Use an Earliest Arrival First alg to schedule.  This tends to produce schedules with less slack, but may miss high-value targets (default is off)"
-	print " --majordome: Use the MAJORDOME scheduling alg from Bringer et al 2000.  Implies --eaf. (Default is off)"
-	print " -f: Calls explain_file_formats() (and then exits), which prints out a message explaining the proper format of all input files."
-	print " -h, --help: Display this usage information and exit.\n"
+     --eaf: Use an Earliest Arrival First alg to schedule.  This tends to produce schedules with less slack, but may miss high-value targets (default is off)
+     --majordome: Use the MAJORDOME scheduling alg from Bringer et al 2000.  Implies --eaf. (Default is off)
+     -f: Calls explain_file_formats() (and then exits), which prints out a message explaining the proper format of all input files.
+    -h, --help: Display this usage information and exit.
+    """
 
 
 def explain_file_formats():
-	print "\nPYRO's file formatting help message (To avoid this message, don't run PYRO with the -f flag.)"
+    print "\nPYRO's file formatting help message (To avoid this message, don't run PYRO with the -f flag.)"
 
-	print "\n\nProper formatting of the target list files (inut with -t, --targetlist flags)"
-	print "--------------------------------------------------------------"
-	print "The default format is the standard Magellan telescope operator format.  For convenience, however, it is possible to define your own custom-made format by doing the following:\n"
-	print "Custom file formats are read directly from the file itself (assumed to be an ASCII text file), and are stored in lines that begin with \'###\'.  In these lines, the next column defines the attribute type, and the one after gives the relevant value (which is often the column number that contains the relevant information; column numbers start at 0).  Columns after that are ignored.  Below is full list of attribute types via example.  The example file is assumed both to be for Magnesium II quasar targets and to have the following format:\nname redshift ra dec Jmag zmag exposure-time weight code comments\nExample:\n"
-	print "### RESET (No other argument necessary) Resets all the below marker values to their default values.  Necessary when more than one list type is included within one target file."
-	print "### RA_DEC_TYPE 0 Defines whether units are hh:mm:ss and deg:arcmin:arcsec (==0), decimal (==1), or the sources are SDSS sources and the location is to be read from the name (==2).  MANDATORY."
-	print "### RA_COL 2 Defines column that holds the Right Ascension.  MANDATORY if RA_DEC_TYPE is 0 or 1."
-	print "### DEC_COL 3 Defines column that holds the Declination.  MANDATORY if RA_DEC_TYPE is 0 or 1."
-	print "### NAME_COL 0 Defines column that holds the name of the object.  MANDATORY."
-	print "# All other source list keywords are optional.  If not provided, the code attempts to compensate for their absence in various ways.  "
-	print "### LABEL MG_II Defines the object label."
-	print "### REDSHIFT_COL 1 Defines column that holds the redshift of the object.*"
-	print "### MAG_COL 4 Defines column that holds the magnitude.*"
-	print "### MAG_BAND Jmag Describes what band is represented by the data in MAG_COL."
-	print "### MAG_COL2 5 Defines column that holds a second value of the magnitude.*"
-	print "### MAG_BAND2 zmag Describes what band is represented by the data in MAG_COL2."
-	print "### EXP_COL 6 Defines column that holds the exposure time."
-	print "### WEIGHT_COL 7 Defines the scheduling priority-weight column."
-	print "### COMMENT_COL 9 Defines the comment column."
-	print "### MAG_UNKNOWN ? Defines the symbol used when a source within the list's magnitude is unknown."
-	print "### FILTER_COL 8 Defines a column used to filter data (optional)."
-	print "### FILTER_VAL a;b;c; Semi-colon separated list of acceptable values to by pass the filter."
+    print "\n\nProper formatting of the target list files (inut with -t, --targetlist flags)"
+    print "--------------------------------------------------------------"
+    print "The default format is the standard Magellan telescope operator format.  For convenience, however, it is possible to define your own custom-made format by doing the following:\n"
+    print "Custom file formats are read directly from the file itself (assumed to be an ASCII text file), and are stored in lines that begin with \'###\'.  In these lines, the next column defines the attribute type, and the one after gives the relevant value (which is often the column number that contains the relevant information; column numbers start at 0).  Columns after that are ignored.  Below is full list of attribute types via example.  The example file is assumed both to be for Magnesium II quasar targets and to have the following format:\nname redshift ra dec Jmag zmag exposure-time weight code comments\nExample:\n"
+    print "### RESET (No other argument necessary) Resets all the below marker values to their default values.  Necessary when more than one list type is included within one target file."
+    print "### RA_DEC_TYPE 0 Defines whether units are hh:mm:ss and deg:arcmin:arcsec (==0), decimal (==1), or the sources are SDSS sources and the location is to be read from the name (==2).  MANDATORY."
+    print "### RA_COL 2 Defines column that holds the Right Ascension.  MANDATORY if RA_DEC_TYPE is 0 or 1."
+    print "### DEC_COL 3 Defines column that holds the Declination.  MANDATORY if RA_DEC_TYPE is 0 or 1."
+    print "### NAME_COL 0 Defines column that holds the name of the object.  MANDATORY."
+    print "# All other source list keywords are optional.  If not provided, the code attempts to compensate for their absence in various ways.  "
+    print "### LABEL MG_II Defines the object label."
+    print "### REDSHIFT_COL 1 Defines column that holds the redshift of the object.*"
+    print "### MAG_COL 4 Defines column that holds the magnitude.*"
+    print "### MAG_BAND Jmag Describes what band is represented by the data in MAG_COL."
+    print "### MAG_COL2 5 Defines column that holds a second value of the magnitude.*"
+    print "### MAG_BAND2 zmag Describes what band is represented by the data in MAG_COL2."
+    print "### EXP_COL 6 Defines column that holds the exposure time."
+    print "### WEIGHT_COL 7 Defines the scheduling priority-weight column."
+    print "### COMMENT_COL 9 Defines the comment column."
+    print "### MAG_UNKNOWN ? Defines the symbol used when a source within the list's magnitude is unknown."
+    print "### FILTER_COL 8 Defines a column used to filter data (optional)."
+    print "### FILTER_VAL a;b;c; Semi-colon separated list of acceptable values to by pass the filter."
 
-	print " *if REDSHIFT_COL==COMMENT_COL, MAG_COL==COMMENT_COL, or MAG_COL2==COMMENT_COL, then the redshift and/or magnitudes are expected to be separated from the other comments by semi-colons and preceded by \'z=\' and/or \'MAG_COL(2)=\', respectively where MAG_COL or MAG_COL2 are the strings defined by the above markers of the same name (for example, \'blah;z=4.5;J=15.7;blah2\' is the correct comment if \'### MAG_BAND J\' is given)"
-	print "\nSince the comments in this example would be ignored by the code, feel free to cut and paste this section into your target list.  These informational columns need not be placed at the beginning of the file.  Therefore, one could change types midway through a target list (but be careful to reset the defaults using ### RESET!).  Commented (#) and empty lines are ignored."
-	print "--------------------------------------------------------------"
+    print " *if REDSHIFT_COL==COMMENT_COL, MAG_COL==COMMENT_COL, or MAG_COL2==COMMENT_COL, then the redshift and/or magnitudes are expected to be separated from the other comments by semi-colons and preceded by \'z=\' and/or \'MAG_COL(2)=\', respectively where MAG_COL or MAG_COL2 are the strings defined by the above markers of the same name (for example, \'blah;z=4.5;J=15.7;blah2\' is the correct comment if \'### MAG_BAND J\' is given)"
+    print "\nSince the comments in this example would be ignored by the code, feel free to cut and paste this section into your target list.  These informational columns need not be placed at the beginning of the file.  Therefore, one could change types midway through a target list (but be careful to reset the defaults using ### RESET!).  Commented (#) and empty lines are ignored."
+    print "--------------------------------------------------------------"
 
-	print "\n\nProper formatting of the telluric files (input with --telluric flag)"
-	print "--------------------------------------------------------------"
-	print "Telluric files follow the same format as Target files, with the catalogue format of the Magellan telescope operators being the default.  The one exception is that telluric files have an extra marker:"
-	print "### SPEC_COL 6 (or whatever number)"
-	print "This column represents the spectral type of the telluric.  (Target files may use the marker as well, if desired, but it has no effect on the scheduler.)"
-	print "--------------------------------------------------------------"
+    print "\n\nProper formatting of the telluric files (input with --telluric flag)"
+    print "--------------------------------------------------------------"
+    print "Telluric files follow the same format as Target files, with the catalogue format of the Magellan telescope operators being the default.  The one exception is that telluric files have an extra marker:"
+    print "### SPEC_COL 6 (or whatever number)"
+    print "This column represents the spectral type of the telluric.  (Target files may use the marker as well, if desired, but it has no effect on the scheduler.)"
+    print "--------------------------------------------------------------"
 
-	print "\n\nProper formatting of the priority source files (input with -P, --Priority flags)"
-	print "--------------------------------------------------------------"
-	print "Priority source files should be ASCII text files with one source name per line.  To determine matches, pyro searches input target names for the substrings contained in these lines.  Thus, full source names are not required (but be careful not to assign priority to less worthy sources by putting a small substring in the priorities file, such as \'SDSS1\', which is likely to match many sources). Commented (#) and empty lines are allowed, and are ignored."
-	print "--------------------------------------------------------------"
+    print "\n\nProper formatting of the priority source files (input with -P, --Priority flags)"
+    print "--------------------------------------------------------------"
+    print "Priority source files should be ASCII text files with one source name per line.  To determine matches, pyro searches input target names for the substrings contained in these lines.  Thus, full source names are not required (but be careful not to assign priority to less worthy sources by putting a small substring in the priorities file, such as \'SDSS1\', which is likely to match many sources). Commented (#) and empty lines are allowed, and are ignored."
+    print "--------------------------------------------------------------"
 
 
 # Check if mandatory options are given on the commandline
@@ -1017,8 +1100,14 @@ def get_marker_dict():
     
     return index_dict
 
-# Inputs the name of a target file (or an array of names) and its (their) format(s) (run usage() for more info on file formate), and outputs an initial list of targets
+
+
 def get_targets(targetfiles, priorities, seeing, Moon, loud, weight_opt):
+    """
+    Inputs the name of a target file (or an array of names) and its (their) format(s), 
+    and outputs an initial list of targets
+
+    """
 
     func_name = "  get_targets()"
     print "%s: extracting targets from these input target files = " % (func_name), targetfiles
@@ -1075,7 +1164,6 @@ def get_targets(targetfiles, priorities, seeing, Moon, loud, weight_opt):
 
 # Inputs the name of a target file (or an array of names) and its (their) format(s) (run usage() for more info on file formate), and outputs an initial list of targets
 def analyze_srclist(targetfile, prilist, seeing, Moon, loud, weight_opt):
-
     func_name = "  analyze_srclist()"
     print "%s: extracting targets from target file = " %(func_name), targetfile
 
@@ -1086,15 +1174,15 @@ def analyze_srclist(targetfile, prilist, seeing, Moon, loud, weight_opt):
     weight_max = -9999999.9
 
     # ra and dec calculation functions
-    ra_dec_funcs = { 'get_ra_dec_from_SDSS_name': get_ra_dec_from_SDSS_name, 'convert_ra_dec': convert_ra_dec, 'radec_str2float': radec_str2float }
+    ra_dec_funcs = { 'get_ra_dec_from_SDSS_name': get_ra_dec_from_SDSS_name, 'convert_ra_dec': 'convert_ra_dec', 'radec_str2float': radec_str2float }
 
     pinds = list()
 
     # check if the file exists
     if os.path.isfile(targetfile)==False:
-        print "***** pyro.py: Target file does not exist!  Target file name:", targetfile, "*****"
-        print "(You might want to try inputting the target file name with command line argument --target)"
-        sys.exit(4)
+        raise IOError( "***** pyro.py: Target file does not exist!  Target file name:", targetfile, "*****")
+        #print "(You might want to try inputting the target file name with command line argument --target)"
+        #sys.exit(4)
 
     # Open the target file
     obj_file = open(targetfile, "r")
@@ -1170,7 +1258,7 @@ def analyze_srclist(targetfile, prilist, seeing, Moon, loud, weight_opt):
                 ra = read_dict(obj_info, index_dict, 'RA_COL', 's')
                 dec = read_dict(obj_info, index_dict, 'DEC_COL', 's')
                 if ra_dec_type == 0:  # given in discrete (ie, hh:mm:ss and deg:arcmin:arcsec) form
-                    radec = 'convert_ra_dec'
+                    radec = None      # 'convert_ra_dec'
                 elif ra_dec_type == 1: # given in decimal form
                     radec = 'radec_str2float'
             else:
@@ -1179,7 +1267,11 @@ def analyze_srclist(targetfile, prilist, seeing, Moon, loud, weight_opt):
                 radec = 'get_ra_dec_from_SDSS_name'
 
             # Add the target to the list
-            target =  ra_dec_funcs[radec]( Target(label, name, z, mag, ra, dec, weight, exposure) )
+            target = Target(label, name, z, mag, ra, dec, weight, exposure)
+
+            if radec is not None:
+                # clean up radec with some function call
+                target=ra_dec_funcs[radec](target)
 
             target.mag_band = index_dict['MAG_BAND']
             target.mag_band2 = index_dict['MAG_BAND2']               
@@ -1208,39 +1300,39 @@ def analyze_srclist(targetfile, prilist, seeing, Moon, loud, weight_opt):
 
 def get_tellurics(tellfiles, pure_A0V_only, mag_min, mag_max, Moon):
 
-	func_name = "  get_tellurics()"
+    func_name = "  get_tellurics()"
 
-	print "%s: extracting tellurics from these input files = " % (func_name), tellfiles
+    print "%s: extracting tellurics from these input files = " % (func_name), tellfiles
 
-	tells = list()
+    tells = list()
 
-	# Cycle through all object lists and grab the objects
-	for index in range( len(tellfiles) ):
-		tellfile = tellfiles[index]
-		# Grab all tellurics from this telluric file
-		tells1 = analyze_tell_list(tellfile, Moon)
-		print "%s: Found %d tellurics in telluric file %s" % (func_name, len(tells1), tellfile)
-		# Append new targets to the total list
-		bad_mag=0
-		not_pure=0
-		filtered=0
-		for tell in tells1:
-			if tell.mag is None:
-				bad_mag = bad_mag + 1
-			elif tell.mag < mag_min or tell.mag > mag_max:
-				bad_mag = bad_mag + 1
-			elif pure_enough(tell.sptype, pure_A0V_only) == False:
-				not_pure = not_pure + 1
-			elif tell.exclude == True:
-				filtered = filtered + 1
-			else:
-				tells.append(tell)
+    # Cycle through all object lists and grab the objects
+    for index in range( len(tellfiles) ):
+        tellfile = tellfiles[index]
+        # Grab all tellurics from this telluric file
+        tells1 = analyze_tell_list(tellfile, Moon)
+        print "%s: Found %d tellurics in telluric file %s" % (func_name, len(tells1), tellfile)
+        # Append new targets to the total list
+        bad_mag=0
+        not_pure=0
+        filtered=0
+        for tell in tells1:
+            if tell.mag is None:
+                bad_mag = bad_mag + 1
+            elif tell.mag < mag_min or tell.mag > mag_max:
+                bad_mag = bad_mag + 1
+            elif pure_enough(tell.sptype, pure_A0V_only) == False:
+                not_pure = not_pure + 1
+            elif tell.exclude == True:
+                filtered = filtered + 1
+            else:
+                tells.append(tell)
 
-		print "%s: Rejected %d of the tellurics in %s because of magnitude, %d because of spectral type, and %d because of other filter settings." % (func_name, bad_mag, tellfile, not_pure, filtered)
-		print "%s: Kept %d good tellurics." % (func_name, len(tells1)-bad_mag-not_pure)
-		print "%s: Cumulative total = %d tellurics" % (func_name, len(tells))
+        print "%s: Rejected %d of the tellurics in %s because of magnitude, %d because of spectral type, and %d because of other filter settings." % (func_name, bad_mag, tellfile, not_pure, filtered)
+        print "%s: Kept %d good tellurics." % (func_name, len(tells1)-bad_mag-not_pure)
+        print "%s: Cumulative total = %d tellurics" % (func_name, len(tells))
 
-	return tells
+    return tells
 
 
 # Inputs the name of a telluric file (or an array of names) and outputs an initial list of targets
@@ -1250,13 +1342,14 @@ def analyze_tell_list(tellfile, Moon):
     print "%s: extracting tellurics from telluric file = " %(func_name), tellfile
 
     # ra and dec calculation functions
-    ra_dec_funcs = { 'get_ra_dec_from_SDSS_name': get_ra_dec_from_SDSS_name, 'convert_ra_dec': convert_ra_dec, 'radec_str2float': radec_str2float }
+    #ra_dec_funcs = { 'get_ra_dec_from_SDSS_name': get_ra_dec_from_SDSS_name, 'convert_ra_dec': convert_ra_dec, 'radec_str2float': radec_str2float }
+    ra_dec_funcs = { 'get_ra_dec_from_SDSS_name': get_ra_dec_from_SDSS_name, 'convert_ra_dec': no_op, 'radec_str2float': radec_str2float }
+
 
     # check if the file exists
     if os.path.isfile(tellfile)==False:
-        print "***** %s: telluric file does not exist!  Telluric file name: %s *****" % (func_name, tellfile)
-        print "(You might want to try inputting the telluric file name with command line argument -f)"
-        sys.exit(4)
+        raise IOError("""***** %s: telluric file does not exist!  Telluric file name: %s *****
+        (You might want to try inputting the telluric file name with command line argument -f) """ % (func_name, tellfile) )
 
     # Open the telluric file
     obj_file = open(tellfile, "r")
@@ -1327,13 +1420,13 @@ def analyze_tell_list(tellfile, Moon):
             # Add the telluric to the list
             tell =  ra_dec_funcs[radec]( Target(label, name, 0.0, mag, ra, dec, weight, exposure) )
 
-						# Update some general information
+                        # Update some general information
             tell.mag_band = index_dict['MAG_BAND']
             tell.mag_band2 = index_dict['MAG_BAND2']               
             tell.mag2 = mag2
             tell.sptype = sptype
 
-			# If a filter is passed (via the index dictionary), then make sure that this object passes the test.
+            # If a filter is passed (via the index dictionary), then make sure that this object passes the test.
             if by_pass_filter(obj_info,index_dict)==False:
                 tell.exclude = True
 
@@ -1937,6 +2030,11 @@ def main(argv):
         targets = conflicts
 
 
+
+def no_op(src):
+    """ This is a placeholder function for the case where no conversion of ra/dec is needed...
+    quick workaround due to API refactoring in process"""
+    return src
 
 
 
